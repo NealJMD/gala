@@ -11,7 +11,7 @@ import tempfile as tmp
 # libraries
 import h5py, Image
 try:
-    from pylibtiff import TIFF
+    from libtiff import TIFF
 except:
     print "pylibtiff not available: http://www.lfd.uci.edu/~gohlke/pythonlibs/#pylibtiff"
 
