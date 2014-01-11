@@ -352,6 +352,7 @@ class Rag(Graph):
             necessary information to perform agglomerative
             segmentation.
         """
+        logger.info("building rag")
         super(Rag, self).__init__(weighted=False)
         self.show_progress = show_progress
         self.nozeros = nozeros
@@ -1159,6 +1160,7 @@ class Rag(Graph):
         alldata = []
         data = [[],[],[],[]]
         for num_epochs in range(max_num_epochs):
+            logger.info("learning round = " + num_epochs)
             ctables = deepcopy(master_ctables)
             if len(data[0]) > min_num_samples and num_epochs >= min_num_epochs:
                 break
@@ -1185,7 +1187,9 @@ class Rag(Graph):
                 g.merge_priority_function = mpf
             g.show_progress = False # bug in MergeQueue usage causes
                                     # progressbar crash.
+            logger.info("about to rebuild merge queue")
             g.rebuild_merge_queue()
+            logger.info("appending _learn_agglomerate to alldata")
             alldata.append(g._learn_agglomerate(ctables, feature_map,
                                                 learning_mode, labeling_mode))
             if memory:
@@ -1196,6 +1200,7 @@ class Rag(Graph):
             else:
                 data = alldata[-1]
             logging.debug('data size %d at epoch %d'%(len(data[0]), num_epochs))
+            logger.info("finished round")
         return data, alldata
 
 
