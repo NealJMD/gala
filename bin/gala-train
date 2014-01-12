@@ -29,7 +29,7 @@ except ImportError:
     logging.warning('Could not import syngeo. Synapse-aware mode not available.')
 
 # local modules
-from gala import imio, agglo, morpho, classify, features, evaluate
+from gala import imio, agglo, morpho, classify, features, evaluate, cues
 
 
 if __name__ == '__main__':
@@ -164,11 +164,13 @@ if __name__ == '__main__':
 
     p = imio.read_image_stack(args.fin[0],
             group='/volume/predictions')
+
     if p.ndim == 3:
        (a, b, c) = p.shape
        p = p.reshape((a, b, c, 1))
-    p = p.transpose((2,1,0,3))
-    
+    pa = p.transpose((2,1,0,3))
+    p = cues.add_derivative_cues(pa)
+
     p0 = p if args.no_channel_data else p[..., 0]
     if args.single_channel: p = p0
     gs = evaluate.relabel_from_one(imio.read_image_stack(args.fin[1]))[0]

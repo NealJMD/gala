@@ -14,7 +14,8 @@ from . import \
     io, \
     moments, \
     orientation, \
-    squiggliness
+    squiggliness, \
+    size
 
 __all__ = ['base', 'convex_hull', 'graph', 'histogram', 'inclusion', 'io',
-    'moments', 'orientation', 'squiggliness']
+    'moments', 'orientation', 'squiggliness', 'size']
