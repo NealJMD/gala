@@ -284,6 +284,8 @@ def output_raveler(segmentation, supervoxels, grayscale, name, session_location,
 def flow_perform_agglomeration(options, supervoxels, prediction, image_stack,
                                 session_location, sps_out, master_logger): 
     # make synapse constraints
+    master_logger.info("in flow_perform_agglomeration in segmentation pipeline")    
+
     synapse_volume = numpy.array([])
     if not options.use_neuroproof and options.synapse_file is not None:
         pre_post_pairs = syngeo.io.raveler_synapse_annotations_to_coords(
@@ -331,7 +333,6 @@ def flow_perform_agglomeration(options, supervoxels, prediction, image_stack,
                 merge_priority_function=agglo.boundary_median,
                 show_progress=True, nozeros=True, exclusions=synapse_volume)
         master_logger.info("Finished building RAG")
-
 
     # remove inclusions 
     if options.inclusion_removal:

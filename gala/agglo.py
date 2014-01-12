@@ -352,14 +352,17 @@ class Rag(Graph):
             necessary information to perform agglomerative
             segmentation.
         """
-        logger.info("building rag")
+        sys.stderr.write("building super of rag\n")
         super(Rag, self).__init__(weighted=False)
         self.show_progress = show_progress
         self.nozeros = nozeros
         self.pbar = (ip.StandardProgressBar() if self.show_progress
                      else ip.NoProgressBar())
+        sys.stderr.write("setting watershed\n")
         self.set_watershed(watershed, lowmem, connectivity)
+        sys.stderr.write("setting probabilities\n")
         self.set_probabilities(probabilities, normalize_probabilities)
+        sys.stderr.write("setting orientations\n")
         self.set_orientations(orientation_map, channel_is_oriented)
         if watershed is None:
             self.ucm = None
@@ -369,10 +372,14 @@ class Rag(Graph):
             self.ucm_r = self.ucm.ravel()
         self.merge_priority_function = merge_priority_function
         self.max_merge_score = -inf
+        sys.stderr.write("building graph from watershed\n")
         self.build_graph_from_watershed(allow_shared_boundaries, nozerosfast=self.nozeros)
+        sys.stderr.write("setting feature manager\n")
         self.set_feature_manager(feature_manager)
+        sys.stderr.write("setting ground truth\n")
         self.set_ground_truth(gt_vol)
         self.set_exclusions(exclusions)
+        sys.stderr.write("setting exclusions\n")
         self.merge_queue = MergeQueue()
         self.frozen_nodes = set()
         if isfrozennode is not None:
@@ -1160,7 +1167,7 @@ class Rag(Graph):
         alldata = []
         data = [[],[],[],[]]
         for num_epochs in range(max_num_epochs):
-            logger.info("learning round = " + num_epochs)
+            sys.stderr.write("learning round = " + str(num_epochs) + "\n")
             ctables = deepcopy(master_ctables)
             if len(data[0]) > min_num_samples and num_epochs >= min_num_epochs:
                 break
@@ -1187,9 +1194,9 @@ class Rag(Graph):
                 g.merge_priority_function = mpf
             g.show_progress = False # bug in MergeQueue usage causes
                                     # progressbar crash.
-            logger.info("about to rebuild merge queue")
+            sys.stderr.write("about to rebuild merge queue\n")
             g.rebuild_merge_queue()
-            logger.info("appending _learn_agglomerate to alldata")
+            sys.stderr.write("appending _learn_agglomerate to alldata\n")
             alldata.append(g._learn_agglomerate(ctables, feature_map,
                                                 learning_mode, labeling_mode))
             if memory:
@@ -1200,7 +1207,7 @@ class Rag(Graph):
             else:
                 data = alldata[-1]
             logging.debug('data size %d at epoch %d'%(len(data[0]), num_epochs))
-            logger.info("finished round")
+            sys.stderr.write("finished round\n")
         return data, alldata
 
 
