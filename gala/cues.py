@@ -1,9 +1,10 @@
 import numpy as np
-
+import sys
 
 def add_derivative_cues(predictions):
     new_preds = []
-    predictions = predictions.transpose((0,3,1,2))
+    predictions = predictions.transpose((2,3,0,1))
+    sys.stderr.write(str(predictions.shape) + "\n")
     num_images = len(predictions[:])
     for i in range(0,num_images):
         image = predictions[i,:,:,:]
@@ -21,5 +22,11 @@ def add_derivative_cues(predictions):
         new_preds.append(image_list)
 
     np_new_preds = np.array(new_preds)
-    np_new_preds = np_new_preds.transpose((0,2,3,1))
+    sys.stderr.write(str(np_new_preds.shape) + "\n")
+    np_new_preds = np_new_preds.transpose((2,3,0,1))
+    sys.stderr.write(str(np_new_preds.shape) + "\n")
+    new_chan = np_new_preds[:,:,:,1]
+    sys.stderr.write("sum of new channel = " + str(new_chan.sum()) + "\n")
+    sys.stderr.write("maxval = " + str(np.amax(new_chan)) + ", minval = " + str(np.amin(new_chan)) + "\n")
+
     return np_new_preds

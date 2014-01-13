@@ -72,16 +72,30 @@ if __name__ == '__main__':
         master_log.info('Ground truth bodies: %i' % len(np.unique(gt)))
         if args.relabel_from_one:
             gt = ev.relabel_from_one(gt)[0]
+    #import pdb; pdb.set_trace()
+    #print "here"
+    thresh = 0.0
     for segfn in args.seg:
+        print segfn
         args.ucm = args.ucm or segfn.endswith('.ucm.lzf.h5') or \
                                segfn.endswith('.ucm.h5')
         seg = imio.read_image_stack(segfn)
+        print seg.shape
+        print gt.shape
+        sys.stdout.flush()
         if args.ucm:
-            vi = ev.vi_by_threshold(seg, gt, [0], [0])
+            ri = ev.rand_by_threshold(seg, gt)
+            print ri
         else:
             if args.relabel_from_one:
                 seg = ev.relabel_from_one(seg)[0]
-            vi = np.concatenate((np.array([args.threshold]), 
-                ev.split_vi(seg, gt)))[..., np.newaxis]
-        imio.write_h5_stack(vi, segfn, group='vi')
-        print vi[:, :max(6, len(vi[0]))]
+            #ri = np.concatenate((np.array([thresh]), 
+                ri= ev.rand_index(seg, gt)
+            #ri2 = np.concatenate((np.array([thresh]),
+                ri2= ev.adj_rand_index(seg, gt)
+        imio.write_h5_stack(ri, segfn, group='ri')
+        #imio.write_h5_stack(ri, segfn, group='ri')
+        print thresh
+        thresh = thresh + 0.01
+        print ri
+	print ri2

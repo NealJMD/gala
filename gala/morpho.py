@@ -1,5 +1,5 @@
 #!/usr/bin/env python
-
+import sys
 import numpy as np
 from numpy import   reshape, \
                     array, zeros, zeros_like, ones, arange, \
@@ -429,6 +429,8 @@ def pad(ar, vals, axes=None):
         vals = [vals]
     if not _is_container(axes):
         axes = [axes]
+    sys.stderr.write(str(vals)+"\n")
+    if np.isinf(vals[0]): error("we out this bitch")
     padding_thickness = len(vals)
     newshape = array(ar.shape)
     for ax in axes:

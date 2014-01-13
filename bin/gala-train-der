@@ -169,8 +169,9 @@ if __name__ == '__main__':
        (a, b, c) = p.shape
        p = p.reshape((a, b, c, 1))
     pa = p.transpose((2,1,0,3))
-    # p = cues.add_derivative_cues(pa)
-
+    MasterLogger.info("shape of original p = " + str(pa.shape))
+    p = cues.add_derivative_cues(pa)
+    MasterLogger.info("shape of p with der channels = " + str(p.shape))
     p0 = p if args.no_channel_data else p[..., 0]
     if args.single_channel: p = p0
     gs = evaluate.relabel_from_one(imio.read_image_stack(args.fin[1]))[0]

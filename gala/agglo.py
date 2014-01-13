@@ -4,8 +4,10 @@ import itertools as it
 import argparse
 import random
 import sys
+import scipy.misc
 import logging
 import json
+import warnings
 from copy import deepcopy
 from math import isnan
 # libraries
@@ -703,7 +705,7 @@ class Rag(Graph):
                     2*self.pad_thickness*ones(self.watershed.ndim, dtype=int))
         p_ndim = probs.ndim
         w_ndim = self.watershed.ndim
-        padding = [inf]+(self.pad_thickness-1)*[0]
+        padding = [0]+(self.pad_thickness-1)*[0]
         if p_ndim == w_ndim:
             self.probabilities = morpho.pad(probs, padding)
             self.probabilities_r = self.probabilities.ravel()[:,newaxis]
@@ -757,7 +759,6 @@ class Rag(Graph):
                     self.orientation_map_r]
             self.non_oriented_probabilities_r = \
                 self.probabilities_r[:, ~self.channel_is_oriented]
-
 
     def set_watershed(self, ws=array([]), lowmem=False, connectivity=1):
         """Set the initial segmentation volume (watershed).
@@ -1185,7 +1186,16 @@ class Rag(Graph):
                 feat, lab = classify.sample_training_data(
                     data[0], data[1][:, label_type_keys[labeling_mode]],
                     max_num_samples)
-                cl = cl.fit(feat, lab)
+                feat = self.check_nans(feat, name="feature matrix passed to classifier")
+                label = self.check_nans(lab, name="label matrix passed to classifier")
+                feat = self.check_nans(feat, name="feature matrix passed to classifier")
+                label = self.check_nans(lab, name="label matrix passed to classifier")
+                try:
+		    cl = cl.fit(feat, lab)
+                except:
+                    sys.stderr.write("max of feat:"+str(np.max(feat))+"\n")
+                    sys.stderr.write("min of feat:"+str(np.min(feat))+"\n")
+                    sys.stderr.write("sum of feat:"+str(np.sum(feat))+"\n")
                 g.merge_priority_function = active_function(feature_map, cl)
             elif priority_mode == 'random' or \
                 (priority_mode == 'active' and num_epochs == 0):
@@ -1447,6 +1457,26 @@ class Rag(Graph):
         edge = self[n1][n2]
         if self.ucm is not None:
             self.ucm_r[list(edge['boundary'])] = inf
+
+
+    def check_nans(self, matrix, name="matrix"):
+        """Remove all NaNs and infinite values from a matrix and warn if any are found
+	
+         Parameters
+         ----------
+         matrix : np.ndarray
+             Matrix to be cleaned of NaNs and Infs
+
+        Returns
+        -------
+        matrix with NaNs replaced by zeros and Infs replaced by large numbers.
+        """
+	if np.isfinite(np.sum(matrix)): return matrix
+        nan_count = np.sum(np.isnan(matrix))
+        inf_count = np.sum(np.isinf(matrix))
+        warnings.warn("Detected %i NaNs and %i infs in %s of size %s!" \
+                 % (nan_count, inf_count, name, str(matrix.shape)))
+        return np.nan_to_num(matrix)
 
 
     def merge_nodes(self, n1, n2):
