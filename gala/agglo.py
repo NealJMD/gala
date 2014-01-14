@@ -705,7 +705,7 @@ class Rag(Graph):
                     2*self.pad_thickness*ones(self.watershed.ndim, dtype=int))
         p_ndim = probs.ndim
         w_ndim = self.watershed.ndim
-        padding = [0]+(self.pad_thickness-1)*[0]
+        padding = [38320]+(self.pad_thickness-1)*[0]
         if p_ndim == w_ndim:
             self.probabilities = morpho.pad(probs, padding)
             self.probabilities_r = self.probabilities.ravel()[:,newaxis]

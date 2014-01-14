@@ -31,6 +31,19 @@ except ImportError:
 # local modules
 from gala import imio, agglo, morpho, classify, features, evaluate, cues
 
+def read_stack_with_derivatives(filename): 
+    p = imio.read_image_stack(filename,
+            group='/volume/predictions')
+
+    if p.ndim == 3:
+       (a, b, c) = p.shape
+       p = p.reshape((a, b, c, 1))
+    pa = p.transpose((2,1,0,3))
+    MasterLogger.info("shape of original p = " + str(pa.shape))
+    p = cues.add_derivative_cues(pa)
+    MasterLogger.info("shape of p with der channels = " + str(p.shape))
+    return p
+
 
 if __name__ == '__main__':
 
@@ -46,6 +59,8 @@ if __name__ == '__main__':
     parser.add_argument('-s', '--single-channel', action='store_true',
         default=False,
         help='Use only one channel from the boundary prediction map.')
+    parser.add_argument('-a', '--additional-input', type=str, default='',
+        help='If supplied, concatenates input from this file to main input')
     parser.add_argument('-C', '--no-channel-data', action='store_true',
         default=False,
         help='The probability map has no separate dimension for channels.')
@@ -162,16 +177,14 @@ if __name__ == '__main__':
     MasterLogger.info("Script called: " + ' '.join(sys.argv))
     MasterLogger.info("Script run from: " + os.path.realpath('.'))
 
-    p = imio.read_image_stack(args.fin[0],
-            group='/volume/predictions')
+    MasterLogger.info("Reading in "+args.fin[0])
+    p = read_stack_with_derivatives(args.fin[0])
+    if len(args.additional_input):
+        MasterLogger.info("Reading in "+args.additional_input)
+        p2 = read_stack_with_derivatives(args.additional_input)
+        p = np.concatenate((p, p2), axis=3)
+        MasterLogger.info("shape of p with all channels = " + str(p.shape))
 
-    if p.ndim == 3:
-       (a, b, c) = p.shape
-       p = p.reshape((a, b, c, 1))
-    pa = p.transpose((2,1,0,3))
-    MasterLogger.info("shape of original p = " + str(pa.shape))
-    p = cues.add_derivative_cues(pa)
-    MasterLogger.info("shape of p with der channels = " + str(p.shape))
     p0 = p if args.no_channel_data else p[..., 0]
     if args.single_channel: p = p0
     gs = evaluate.relabel_from_one(imio.read_image_stack(args.fin[1]))[0]

@@ -1,0 +1,317 @@
+#!/usr/bin/env python
+
+# ensure imported package is local to this executable
+
+import os
+import sys
+
+this_dir = os.path.dirname(sys.argv[0])
+pkg_dir = os.path.abspath(os.path.join(this_dir, '..'))
+sys.path.insert(0, pkg_dir)
+
+# Python standard library
+import argparse, cPickle
+import subprocess as sp
+import logging
+import functools
+
+# external libraries
+from numpy import unique, inf, nonzero, zeros, uint8, mean, array
+import numpy as np
+try:
+    from skimage import morphology as skmorph
+except ImportError:
+    logging.warning('Could not import skimage.')
+from scipy.ndimage import label
+
+try:
+    import syngeo
+except ImportError:
+    logging.warning('Could not import syngeo. ' +
+                                        'Synapse-aware mode not available.')
+
+# local modules
+from gala import imio, agglo, morpho, classify, features, cues
+
+try:
+    from gala import stack_np
+except ImportError:
+    pass
+
+def read_stack_with_derivatives(filename):
+    p = imio.read_image_stack(filename,
+            group='/volume/predictions')
+
+    if p.ndim == 3:
+       (a, b, c) = p.shape
+       p = p.reshape((a, b, c, 1))
+    pa = p.transpose((2,1,0,3))
+    MasterLogger.info("shape of original p = " + str(pa.shape))
+    p = cues.add_derivative_cues(pa)
+    MasterLogger.info("shape of p with der channels = " + str(p.shape))
+    return p
+
+if __name__ == '__main__':
+
+
+    parser = argparse.ArgumentParser(
+        description='Train a classifier for agglomerative segmentation.')
+    parser.add_argument('fin',
+        help='The boundary probability map to be segmented, in HDF5 format ' +\
+        '(group "stack" is assumed).')
+    parser.add_argument('-I', '--remove-inclusions', action='store_true',
+        default=False, 
+        help='Remove inclusions before segmenting and before output.')
+    parser.add_argument('-a', '--additional-input', type=str, default='',
+        help='If supplied, concatenates input from this file to main input')
+    parser.add_argument('-s', '--single-channel', action='store_true',
+        default=False,
+        help='Use only one channel from the boundary prediction map.')
+    parser.add_argument('-C', '--no-channel-data', action='store_true',
+        default=False,
+        help='The probability map has no separate dimension for channels.')
+    parser.add_argument('-F', '--feature-manager', metavar='EVAL_STR',
+        default='features.base.Composite(children=' +\
+            '[features.moments.Manager(), ' +\
+            'features.histogram.Manager(25, 0, 1, [0.1, 0.5, 0.9])]' +\
+            ')',
+        help='Specify the feature manager you would like to use. ' +\
+        '(This HAS to match the one used during training!)')
+    parser.add_argument('-k', '--classifier', metavar='CL_FILE',
+        help='Use the agglomeration classifier from file CL_FILE.')
+    parser.add_argument('-T', '--training-data', metavar='TR_FILE',
+        type=classify.load_training_data_from_disk,
+        help='Use the agglomeration training data in TR_FILE.')
+    parser.add_argument('-V', '--expected-vi', action='store_true', 
+        default=False,
+        help='Use expected change in VI as agglomeration function.')
+    parser.add_argument('-B', '--active-vi-beta', type=float, default=1.0,
+        help='Relative penalty for false merges in weighted expected VI.')
+    parser.add_argument('-f', '--priority-function', metavar='EVAL_STR',
+        default='agglo.boundary_median',
+        help='Use specified priority function (when not using a classifier).')
+    parser.add_argument('-N', '--num-training', metavar='UINT', type=int,
+        help='Specify the number of training examples to sample.')
+    parser.add_argument('-t', '--thresholds', nargs='+', default=[],
+        metavar='FLOAT',
+        help='Output segmentations for the specified thresholds.')
+    parser.add_argument('-w', '--watershed', metavar='FILE',
+        help='Load the watershed or other oversegmentation from FILE.')
+    parser.add_argument('-P', '--show-progress', action='store_true', 
+        default=False, help='Show a progress bar.')
+    parser.add_argument('--use-neuroproof', action='store_true',
+        default=False, 
+        help='Use NeuroProof.')
+    parser.add_argument('-Z', '--nozeros', action='store_false', 
+        default=True, help='Disable nozeros mode.')
+    parser.add_argument('-v', '--verbose', action='store_true', default=False,
+        help='Print runtime information about execution.')
+    parser.add_argument('-J', '--no-graph-json', dest='graph_json_export',
+        action='store_false', default=True,
+        help='When outputting to Raveler, don\'t bother outputting graph.')
+    parser.add_argument('-i', '--images', 
+        help='specify the grayscale images for Raveler export.')
+    parser.add_argument('-R', '--no-raveler-export', dest='raveler_export',
+        action='store_false', default=True,
+        help='Turn off Raveler export.')
+    parser.add_argument('--output-dir', type=str, default='./', metavar='DIR',
+        help="Directory for all output")
+    parser.add_argument('--experiment-name', type=str, required=True,
+        metavar='EXP_NAME',
+        help="Name of the experiment, used as the base name for all outputs.")
+    parser.add_argument('--seed-cc-threshold', type=int, default=0,
+        help='Connected component threshold in seed creation')
+    parser.add_argument('-S', '--synapse-file', type=str, metavar='FN',
+        help='Use a synapse annotation json file to help segmentation.')
+    parser.add_argument('-d', '--synapse-dilation', type=int, metavar='INT',
+        help='Dilate synapse points by this amount.', default=1)
+    parser.add_argument('--no-mito-merge', type=float, nargs='+', default=None,
+        help='Mitochodria channels, Mitochondria threshold, Boundary Threshold \
+        for segmenting without merging the mitochondrial superpixels.')
+    parser.add_argument('--mito-merge', type=float, nargs='+', default=None,
+        help='Mitochodria channels, Mitochondria threshold, Boundary Threshold \
+        for merging only the mitochondrial superpixels with the surrounding cytoplasms.')          
+    args = parser.parse_args()
+    
+
+    if args.use_neuroproof and (args.synapse_file is not None):
+        MasterLogger.warning("NeuroProof cannot be enabled with the synapse file set")
+        args.use_neuroproof = False
+
+    if args.use_neuroproof:
+        try:
+            from gala import stack_np
+        except ImportError:
+            MasterLogger.warning("NeuroProof could not be imported")
+            sys.exit(1)
+
+    experiment_prefix = os.path.join(args.output_dir, args.experiment_name)
+
+    MasterLogger = logging.getLogger('pipeline')
+    MasterLogger.propagate = False
+    MasterLogger.setLevel(logging.DEBUG)
+    console = logging.StreamHandler(sys.stdout)
+    console.setLevel(logging.INFO)
+    
+    formatter = logging.Formatter('%(levelname)-8s %(message)s')
+    console.setFormatter(formatter)
+    MasterLogger.addHandler(console)
+   
+    if not os.path.exists(args.output_dir):
+        os.makedirs(args.output_dir)
+
+    if args.experiment_name.find('/') != -1:
+        MasterLogger.error("Experiment name cannot be a path")
+        sys.exit(1)
+
+    prim = logging.FileHandler(experiment_prefix + ".gala-segment.log", 'a')
+    prim.setLevel(logging.DEBUG)
+    prim.setFormatter(logging.Formatter(
+        fmt='%(asctime)s %(levelname)-8s %(message)s',
+        datefmt='%m-%d-%y %H:%M'))
+    MasterLogger.addHandler(prim)
+
+    MasterLogger.info("Script called: " + ' '.join(sys.argv))
+    MasterLogger.info("Script run from: " + os.path.realpath('.'))
+
+    
+    h5stacks = os.path.join(args.output_dir, "segmentations") \
+        if args.raveler_export else args.output_dir
+    if not os.path.exists(h5stacks):
+        os.makedirs(h5stacks)
+    h5stacks = os.path.join(h5stacks, args.experiment_name + '-%0.2f')
+
+    if args.raveler_export:
+        ravelervol = args.output_dir + "/raveler-exports"
+        if not os.path.exists(ravelervol):
+            os.makedirs(ravelervol)
+        ravelervol = ravelervol + "/" + args.experiment_name + '-%0.2f'   
+
+
+    # load all the required data
+    
+    # probability map
+    #p = imio.read_image_stack(args.fin, single_channel=False)
+    #p = imio.read_image_stack(args.fin, group='/volume/predictions')
+    p = read_stack_with_derivatives(args.fin)
+    if len(args.additional_input):
+        MasterLogger.info("Reading in "+args.additional_input)
+        p2 = read_stack_with_derivatives(args.additional_input)
+        p = np.concatenate((p, p2), axis=3)
+        MasterLogger.info("shape of p with all channels = " + str(p.shape))
+
+    p0 = p if args.no_channel_data else p[..., 0]
+    if args.single_channel: p = p0
+    # grayscale image
+    im = imio.read_image_stack(args.images) if args.images is not None else None
+    if args.watershed is not None:
+        ws = imio.read_image_stack(args.watershed)
+    else:
+        MasterLogger.info("Performing watershed")
+        seeds = label(p0==0)[0]
+        if args.seed_cc_threshold > 0:
+            seeds = morpho.remove_small_connected_components(seeds,
+                args.seed_cc_threshold)
+        ws = skmorph.watershed(p0, seeds)
+        MasterLogger.info("Finished performing watershed")
+    fm = eval(args.feature_manager, {}, {'features': features})
+
+    # synapses
+    synapse_aware = args.synapse_file is not None
+    if synapse_aware:
+        MasterLogger.info("Processing synapses")
+        pre_post_pairs = syngeo.io.raveler_synapse_annotations_to_coords(
+            args.synapse_file)
+        synapse_volume = syngeo.io.volume_synapse_view(pre_post_pairs, p0.shape)
+        ws = morpho.split_exclusions(p0, ws, synapse_volume, 
+                                                        args.synapse_dilation)
+        MasterLogger.info("Finished processing synapses")
+    else:
+        synapse_volume = np.zeros(p0.shape, np.uint8)
+    
+    # Load training data or classifier
+    if args.training_data is not None or args.classifier is not None:
+        if args.classifier is not None:
+            MasterLogger.info("Loading classifier")
+            cl = classify.load_classifier(args.classifier)
+        else:
+            MasterLogger.info("Training classifier")
+            cl = classify.get_classifier().fit(args.training_data[0], 
+                args.training_data[1][:,0])
+            MasterLogger.info("Finished training classifier")
+        if args.expected_vi:
+            mpf = agglo.expected_change_vi(fm, cl, beta=args.active_vi_beta)
+        else:
+            mpf = agglo.classifier_probability(fm, cl)
+    else:
+        mpf = eval(args.priority_function, {}, {'agglo': agglo})
+        
+    if args.no_mito_merge is not None:
+        # In the mito-merge/ no-mito-merge optional argument list, the last (-1) arg is
+        # the threshold used for detecting whether two mitos are touching; and the 
+        # penultimate (-2) arg is the threshold for mito detection. The rest of the 
+        # elements in the argument list are the mito channels used in the boundary
+        # prediction.
+        mpf = agglo.no_mito_merge(mpf)
+        is_mito = functools.partial(agglo.is_mito, channel=args.no_mito_merge[0:-2],\
+        threshold=args.no_mito_merge[-2])
+        is_mito_boundary =  functools.partial(agglo.is_mito_boundary,\
+        channel=args.no_mito_merge[0:-2], threshold=args.no_mito_merge[-1])
+    if args.mito_merge is not None:
+        mpf = agglo.mito_merge()
+        is_mito = functools.partial(agglo.is_mito, channel=args.mito_merge[0:-2],\
+        threshold=args.mito_merge[-2])
+        is_mito_boundary =  functools.partial(agglo.is_mito_boundary,\
+        channel=args.mito_merge[0:-2], threshold=args.mito_merge[-1])    
+
+    MasterLogger.info("Building RAG")
+    g = None
+    if args.use_neuroproof:
+        g = stack_np.Stack(ws, p, single_channel=args.single_channel, classifier=cl)        
+    elif args.no_mito_merge is not None or args.mito_merge is not None:       
+        g = agglo.Rag(ws, p, mpf, feature_manager=fm, 
+            show_progress=args.show_progress, nozeros=args.nozeros, 
+            exclusions=synapse_volume, isfrozennode=is_mito, isfrozenedge=is_mito_boundary)
+    else:
+        g = agglo.Rag(ws, p, mpf, feature_manager=fm, 
+            show_progress=args.show_progress, nozeros=args.nozeros, 
+            exclusions=synapse_volume)
+    MasterLogger.info("Finished building RAG")
+    if args.remove_inclusions:
+        MasterLogger.info("Removing inclusions with %i nodes" % 
+                                                g.number_of_nodes())
+        g.remove_inclusions()
+        MasterLogger.info("Finished removing inclusions with %i nodes" %
+                                                g.number_of_nodes())
+        ws = g.get_segmentation()
+    sps = imio.raveler_serial_section_map(ws, 0, False, False)
+    for t in map(float, args.thresholds):
+        MasterLogger.info("Agglomerating RAG to %f with %i nodes" % 
+                                                (t, g.number_of_nodes()))
+        g.agglomerate(t)
+        MasterLogger.info("Finished agglomerating RAG to %f with %i nodes" %
+                                                (t, g.number_of_nodes()))
+        MasterLogger.info("Removing inclusions")
+        g.remove_inclusions()
+        MasterLogger.info("Finished removing inclusions with %i nodes" % 
+                                                g.number_of_nodes())
+        s = g.get_segmentation()
+        if args.no_mito_merge is not None or args.mito_merge is not None:
+            if args.classifier is not None:
+                g.merge_priority_function = agglo.classifier_probability(fm, cl)
+                g.rebuild_merge_queue()
+        MasterLogger.info("Exporting volume")
+        imio.write_image_stack(s, (h5stacks +'.lzf.h5')%t, compression='lzf')
+        if args.raveler_export:
+            imio.raveler_output_shortcut(ws, s, im, (ravelervol)%t, sps)
+        if args.raveler_export and args.graph_json_export:
+            g.write_plaza_json(
+                os.path.join((ravelervol)%t, 'graph.json'), args.synapse_file)
+                
+    MasterLogger.info("Complete RAG agglomeration")
+    if not args.use_neuroproof:
+        g.agglomerate(inf)
+        MasterLogger.info("Finished complete RAG agglomeration")
+        u = g.get_ucm()
+        MasterLogger.info("Writing final ucm")
+        imio.write_image_stack(u, (h5stacks + '.ucm.lzf.h5')%inf, compression='lzf')
