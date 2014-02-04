@@ -525,6 +525,75 @@ def orphans(a):
             unique(a), unique(concatenate([s.ravel() for s in surfaces(a)]))
             )
 
+# from gala import morpho as m; import numpy as np; t = np.array([[1,2,1],[3,2,1],[1,1,1]]); m.flood_fill(t, (2,2), [1], True)
+def flood_fill(im, start, acceptable, raveled=False):
+    """ Flood fill all the voxels from a given starting point whose values
+        match the values listed in acceptable.
+
+        im: an ndarray that gives the supervoxel id of the index
+        start: a list or tuple of length equal to the dimensionality of im
+        acceptable: a list of the values that the fill should flood into
+        raveled: whether to return the flooded points as coordinate tuples
+                or as raveled indices.
+
+        returns a list of points as tuples if raveled == False, or as raveled
+            indices if raveled == True
+    """
+    if im[start] not in acceptable: return []
+    matches, frontier = [start], [start]
+    while frontier:
+        new_frontier = []
+        for base_point in frontier:
+            for point in adjacent_points(base_point, im.shape):
+                if point in matches: continue
+                if im[point] not in acceptable: continue
+                new_frontier.append(point)
+                matches.append(point)
+        frontier = new_frontier
+    if not raveled: return matches
+    return np.ravel_multi_index(format_for_ravel_multi_index(matches), im.shape)
+
+
+def format_for_ravel_multi_index(point_list):
+    """ Reformat a list of points to be passed to np.multi_index_ravel
+
+        point_list: a list of tuples or list of lists or tuple of tuples where
+                    each element represents a point
+
+        returns a tuple of lists where each list is all the values for a given
+            dimension. see numpy documentation of ravel_multi_index
+    """
+    # reformat list of matches for np ravel
+    multi_index = [[] for d in xrange(0, len(point_list[0]))]
+    for point in point_list:
+        for column, value in enumerate(point):
+            multi_index[column].append(value)
+    return multi_index
+
+def adjacent_points(point, shape=()):
+    """ Takes a point with arbitrary dimensions and returns a list of the
+        points surrounding it (eg (x+1, y), (x-1, y), (x, y+1), (x, y-1))
+
+        point: a tuple defining a point
+        shape: a tuple with the size of each dimension, as in my_nd_array.shape
+               used for checking upper bound. (optional)
+
+        returns a list of tuples each of which represents a point
+
+    """
+    if len(shape) > 0 and len(shape) != len(point):
+        raise IndexError("point and shape must be the same length!")
+    adjacent_points = []
+    for d in xrange(0, len(point)):
+        for shift in [-1, 1]:
+            new_index = point[d] + shift
+            if new_index < 0: continue
+            if len(shape) == len(point) and new_index >= shape[d]: continue
+            p = list(point)
+            p[d] = new_index
+            adjacent_points.append(tuple(p))
+    return adjacent_points
+
 def non_traversing_segments(a):
     """Find segments that enter the volume but do not leave it elsewhere."""
     if a.all():
