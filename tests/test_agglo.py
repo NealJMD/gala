@@ -55,24 +55,26 @@ def test_no_dam_agglomeration():
 
 def test_flood_fill():
     fail_message = 'Flood fill failed.'
+    testee = morpho.flood_fill_jit
     example = np.array([[[0,1,2,5],
                          [0,0,2,4],
                          [1,0,1,2]],
                         [[0,0,5,5],
                          [1,1,1,5],
                          [1,2,1,5]]])
-    t1 = morpho.flood_fill(example, (0,0,0), [0], True)
+    t1 = testee(example, (0,0,0), [0], True)
     assert_equal(set(t1), set([0,4,5,9,12,13]), fail_message)
-    t2 = morpho.flood_fill(example, (0,0,0), [0], False)
+    t2a = testee(example, (0,0,0), [0], False)
+    t2 = [tuple(m) for m in t2a]
     assert_equal(set(t2), set([(0,0,0), (0,1,0), (0,1,1), (0,2,1), (1,0,0),
                             (1,0,1)]), fail_message)
-    t3 = morpho.flood_fill(example, (0,1,3), [2], True)
+    t3 = testee(example, (0,1,3), [2], True)
     assert_equal(set(t3), set([]), fail_message)
-    t4 = morpho.flood_fill(example, (0,0,3), [5], True)
+    t4 = testee(example, (0,0,3), [5], True)
     assert_equal(set(t4), set([3,14,15,19,23]), fail_message)
-    t5 = morpho.flood_fill(example, (1,1,1), [1,4], True)
+    t5 = testee(example, (1,1,1), [1,4], True)
     assert_equal(set(t5), set([8,10,16,17,18,20,22]), fail_message)
-    t6 = morpho.flood_fill(example, (0,1,2), [2,5], True)
+    t6 = testee(example, (0,1,2), [2,5], True)
     assert_equal(set(t6), set([2,3,6,11,14,15,19,23]), fail_message)
 
 

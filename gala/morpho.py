@@ -24,6 +24,16 @@ from scipy.ndimage.morphology import binary_opening, binary_closing, \
 import iterprogress as ip
 from .evaluate import relabel_from_one
 
+from numba import autojit
+# the debug flag was left on in the last numba release.
+import numba.codegen.debug
+llvmlogger = logging.getLogger('numba.codegen.debug')
+llvmlogger.setLevel(logging.INFO)
+llvmlogger.propagate = False
+llvmlogger.disabled = True
+rootlogger = logging.getLogger()
+rootlogger.disabled = True
+
 try:
     import skimage.morphology
     skimage_available = True
@@ -525,6 +535,86 @@ def orphans(a):
             unique(a), unique(concatenate([s.ravel() for s in surfaces(a)]))
             )
 
+@autojit
+def flood_fill_jit(im, start, acceptable, raveled=False):
+    """ Flood fill all the voxels from a given starting point whose values
+        match the values listed in acceptable.
+
+        Parameters
+        ----------
+        im: ndarray
+            a matrix that gives the supervoxel id of the index
+        start: tuple
+            tuple of length equal to the dimensionality of im specifying
+            the point to begin the flood fill
+        acceptable: list
+            the supervoxel ids that the fill should flood into
+        raveled: boolean (optional, default False)
+            whether to return the flooded points as coordinate tuples
+            or as raveled indices.
+
+        Returns
+        -------
+        matches: list
+            a list of points that were filled, as tuples if raveled == False
+            or as raveled indices if raveled == True
+    """
+    if not acceptable.__contains__(im[start]): return np.array([])
+    matches, frontier = np.array([start]), np.array([start])
+    while frontier.size > 0:
+        new_frontier = np.array([])
+        for base_point_idx in np.arange(0,frontier.shape[0]):
+            base_point = frontier[base_point_idx]
+            adjacent = adjacent_points_jit(base_point, im.shape)
+	    for idx in np.arange(0,adjacent.shape[0]):
+                point = adjacent[idx]
+                if not acceptable.__contains__(im[tuple(point)]): 
+		    continue
+                point_np = np.array([point])
+                if matches.size > 0 and matches.tolist().__contains__(point.tolist()):
+                    continue # if point in matches
+		if new_frontier.size == 0: new_frontier = point_np
+		else: new_frontier = np.concatenate([new_frontier, point_np], axis=0)
+                matches = np.concatenate([matches, point_np])
+        frontier = new_frontier
+    if not raveled: return matches.tolist()
+    formatted = np.array(matches).T
+    return np.ravel_multi_index(formatted, im.shape)
+
+# @autojit
+def adjacent_points_jit(point, shape=()):
+    """ Takes a point with arbitrary dimensions and returns a list of the
+        points surrounding it (eg (x+1, y), (x-1, y), (x, y+1), (x, y-1))
+
+        Parameters
+        ----------
+        point: np array-like
+            the point from which we will pick adjacent points
+        shape: tuple (optional)
+            the size of each dimension, as in my_nd_array.shape. used for 
+            checking upper bound, no upper bound check if unspecified
+
+        Returns
+        -------
+        adjacent_points: list of tuples
+            list of points surrounding point
+
+    """
+    if len(shape) > 0 and len(shape) != len(point):
+        raise IndexError("point and shape must have the same dimensionality!")
+    adjacent_points = np.array([])
+    point = np.array([point])
+    for d in np.arange(0, point.size):
+	for shift in np.arange(-1, 2, 2): #[-1,1]
+            new_index = point[0,d] + shift
+            if new_index < 0: continue
+            if len(shape) == point.size and new_index >= shape[d]: continue
+            p = point.copy()
+            p[0,d] = new_index
+            if adjacent_points.size == 0: adjacent_points = p
+            else: adjacent_points = np.concatenate([adjacent_points, p])
+    return adjacent_points
+
 
 def flood_fill(im, start, acceptable, raveled=False):
     """ Flood fill all the voxels from a given starting point whose values
@@ -563,6 +653,7 @@ def flood_fill(im, start, acceptable, raveled=False):
     if not raveled: return matches
     formatted = np.array(matches).T
     return np.ravel_multi_index(formatted, im.shape)
+
 
 
 def adjacent_points(point, shape=()):
