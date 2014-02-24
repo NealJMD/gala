@@ -1,7 +1,8 @@
 import numpy as np
 from numpy.testing import assert_equal, assert_array_equal
 
-from gala import agglo, morpho
+from gala import agglo
+from gala import cmorpho as morpho
 
 
 test_idxs = range(4)
