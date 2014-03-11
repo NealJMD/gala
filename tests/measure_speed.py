@@ -1,6 +1,7 @@
 from timeit import Timer
 from gala import morpho
 from gala import cmorpho
+from scipy import misc
 import numpy as np
 
 def measure_flood_fill_speed():
@@ -33,6 +34,13 @@ def random_point_in_matrix(shape):
         selected.append(np.random.choice(dim_size))
     return tuple(selected)
 
+def measure_nchoosek_speed():
+    TRIALS = 100000
+    for imp in ["from gala.cagglo import nchoosek",
+                 "from scipy.misc import comb as nchoosek"]:
+        timer = Timer("nchoosek(10000,20)", setup=imp)
+        time = timer.timeit(TRIALS)
+        print "-- %s time across %i trials: %f seconds" % (imp, TRIALS, time)
 
 if __name__ == '__main__':
-    measure_flood_fill_speed()
+    measure_nchoosek_speed()

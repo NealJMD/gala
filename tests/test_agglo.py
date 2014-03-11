@@ -1,9 +1,9 @@
 import numpy as np
 from numpy.testing import assert_equal, assert_array_equal
 
-from gala import agglo
+from gala import cagglo as agglo
 from gala import cmorpho as morpho
-
+from scipy.misc import comb as scipy_nchoosek
 
 test_idxs = range(4)
 num_tests = len(test_idxs)
@@ -76,6 +76,15 @@ def test_flood_fill():
     t6 = morpho.flood_fill(example, (0,1,2), [2,5], True)
     assert_equal(set(t6), set([2,3,6,11,14,15,19,23]), fail_message)
 
+def test_nchoosek():
+    fail_message = "nchoosek failed!"
+    for n in range(50):
+        for k in range(20):
+            sci_val = round(scipy_nchoosek(n, k))
+            cy_val = round(agglo.nchoosek(n, k))
+            if sci_val == cy_val: continue
+            fail_message = "%d choose %d mismatch:\n\tscipy value: %d\n\tcython value: %d\n" % (n, k, sci_val, cy_val)
+            assert_equal(cy_val, sci_val, fail_message)
 
 if __name__ == '__main__':
     from numpy import testing
