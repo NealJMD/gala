@@ -523,6 +523,11 @@ class Rag(Graph):
             extent_array[:,1], extent_array[:,2]), self.watershed.shape)
         return set(raveled_indices)
 
+    def update_extent(self, n1,n2):
+        self.node[n1]['size'] += self.node[n2]['size']
+        self.node[n1]['watershed_ids'] += self.node[n2]['watershed_ids']
+        if 'extent' in self.node[n1] and 'extent' in self.node[n2]:
+            self.node[n1]['extent'].update(self.node[n2]['extent'])
 
     def copy(self):
         """Return a copy of the object and attributes.
@@ -1592,8 +1597,7 @@ class Rag(Graph):
         else:
             self.node[n1]['exclusions'].update(self.node[n2]['exclusions'])
         self.update_ucm(n1, n2)
-        self.node[n1]['size'] += self.node[n2]['size']
-        self.node[n1]['watershed_ids'] += self.node[n2]['watershed_ids']
+        self.update_extent(n1,n2)
 
         self.feature_manager.update_node_cache(self, n1, n2,
                 self.node[n1]['feature-cache'], self.node[n2]['feature-cache'])
