@@ -43,7 +43,7 @@ install:
   - conda update -q conda
   - conda info -a
 
-  - conda create -q -n test-environment python=$TRAVIS_PYTHON_VERSION networkx cython h5py PIL nose scikit-image scikit-learn
+  - conda create -q -n test-environment python=$TRAVIS_PYTHON_VERSION networkx cython h5py PIL nose scikit-image scikit-learn setuptools
   - source activate test-environment
 
   - pip install viridis
