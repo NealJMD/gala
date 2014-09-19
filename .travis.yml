@@ -5,11 +5,11 @@ python:
   - "2.7"
 virtualenv:
   system_site_packages: true
-before_install:
+install:
   # Current TravisCI VM is Ubuntu 12.04 which has Python 2.7 and 3.2.
   # So apt-get will only apply to those virtualenvs.
-  - sudo apt-get install python-numpy python-scipy python-matplotlib
-  - sudo apt-get install libhdf5-serial-dev
+  #- sudo apt-get install python-numpy python-scipy python-matplotlib
+  #- sudo apt-get install libhdf5-serial-dev
 
   # Additionally, the TravisCI VM has numpy preinstalled on 2.6, 2.7 and 3.2.
   # So for 3.3 and pypy, numpy is not preinstalled and must be pip-installed.
@@ -22,23 +22,36 @@ before_install:
   #   skipping pydot (for all) since it is not 3.x compatible.
   #   skipping gdal (for all) since it has errors while installing from pip.
 
-  - pip install pyyaml --use-mirrors
-  - pip install pyparsing --use-mirrors
+  #- pip install pyyaml --use-mirrors
+  #- pip install pyparsing --use-mirrors
   #- pip install coveralls --use-mirrors
-  - pip install networkx --use-mirrors
-  - pip install cython
-  - pip install h5py
-  - pip install PIL
-  - pip install nose
-  - pip install scikit-learn
-  - pip install scikit-image
+  #- pip install networkx --use-mirrors
+  #- pip install cython
+  #- pip install h5py
+  #- pip install PIL
+  #- pip install nose
+  #- pip install scikit-learn
+  #- pip install scikit-image
+
+  - sudo apt-get update
+  - wget http://repo.continuum.io/miniconda/Miniconda-3.4.2-Linux-x86_64.sh -O miniconda.sh;
+  - bash miniconda.sh -b -p $HOME/miniconda
+  - export PATH="$HOME/miniconda/bin:$PATH"
+  - hash -r
+  - conda config --set always_yes yes --set changeps1 no
+  - conda update -q conda
+  - conda info -a
+
+  - conda create -q -n test-environment python=$TRAVIS_PYTHON_VERSION networkx cython h5py PIL nose scikit-image scikit-learn
+  - source activate test-environment
+
   - pip install viridis
 
-script:
   # Install gala
   - printenv PWD
   - python setup.py install
 
+script:
   # Run tests
   - cd tests
   - python -m nose test_agglo.py
